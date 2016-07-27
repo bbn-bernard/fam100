@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -14,15 +13,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/uber-go/zap"
 	"github.com/yulrizka/bot"
 	"github.com/yulrizka/fam100"
+	"github.com/yulrizka/fam100/telegram/cmd"
 	"golang.org/x/net/context"
 )
 
 var (
 	log                  zap.Logger
-	logLevel             int
+	logLevel             *zap.Level
 	minQuorum            = 3 // minimum players to start game
 	graphiteURL          = ""
 	quorumWait           = 120 * time.Second
@@ -60,15 +61,34 @@ func init() {
 }
 
 func main() {
-	flag.StringVar(&botName, "botname", "fam100bot", "bot name")
-	flag.StringVar(&adminID, "admin", "", "admin id")
-	flag.IntVar(&minQuorum, "quorum", 3, "minimal channel quorum")
-	flag.StringVar(&graphiteURL, "graphite", "", "graphite url, empty to disable")
-	flag.IntVar(&roundDuration, "roundDuration", 90, "round duration in second")
-	flag.IntVar(&defaultQuestionLimit, "questionLimit", -1, "set default question limit")
-	flag.IntVar(&blockProfileRate, "blockProfile", 0, "enable go routine blockProfile for profiling rate set to 1000000000 for sampling every sec")
-	logLevel := zap.LevelFlag("v", zap.InfoLevel, "log level: all, debug, info, warn, error, panic, fatal, none")
-	flag.Parse()
+	var rootCmd = &cobra.Command{
+		Use:   "fam100",
+		Short: "Run fam100 telegram game",
+		Run: func(cmd *cobra.Command, args []string) {
+			mainFn()
+		},
+	}
+	rootCmd.Flags().StringVar(&botName, "botname", "fam100bot", "bot name")
+	rootCmd.Flags().StringVar(&adminID, "admin", "", "admin id")
+	rootCmd.Flags().IntVar(&minQuorum, "quorum", 3, "minimal channel quorum")
+	rootCmd.Flags().StringVar(&graphiteURL, "graphite", "", "graphite url, empty to disable")
+	rootCmd.Flags().IntVar(&roundDuration, "roundDuration", 90, "round duration in second")
+	rootCmd.Flags().IntVar(&defaultQuestionLimit, "questionLimit", -1, "set default question limit")
+	rootCmd.Flags().IntVar(&blockProfileRate, "blockProfile", 0, "enable go routine blockProfile for profiling rate set to 1000000000 for sampling every sec")
+
+	// todo fix with cobra
+	logLevel = zap.LevelFlag("v", zap.InfoLevel, "log level: all, debug, info, warn, error, panic, fatal, none")
+
+	rootCmd.AddCommand(cmd.Leave)
+	if err := rootCmd.Execute(); err != nil {
+		panic(err)
+	}
+}
+
+func mainFn() {
+	log.SetLevel(*logLevel)
+	bot.SetLogger(log)
+	fam100.SetLogger(log)
 
 	go func() {
 		if blockProfileRate > 0 {
@@ -79,9 +99,6 @@ func main() {
 	}()
 
 	// setup logger
-	log.SetLevel(*logLevel)
-	bot.SetLogger(log)
-	fam100.SetLogger(log)
 	log.Info("Fam100 STARTED", zap.String("version", VERSION), zap.String("buildtime", BUILDTIME))
 
 	key := os.Getenv("TELEGRAM_KEY")
